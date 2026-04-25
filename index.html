@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delivery Optimizer - amcbhome</title>
+    <script src="https://unpkg.com/javascript-lp-solver/browser/bundle.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 p-8">
+    <div class="max-w-4xl mx-auto bg-white p-8 rounded-xl shadow-lg">
+        <h1 class="text-3xl font-bold text-blue-700 mb-6">Logistics Route Optimizer</h1>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <div class="space-y-4">
+                <h2 class="text-xl font-semibold border-b pb-2">Global Settings</h2>
+                <label class="block text-sm font-medium">Cost per unit/mile (£):
+                    <input type="number" id="unitCost" value="5.00" step="0.5" class="w-full mt-1 p-2 border rounded">
+                </label>
+
+                <h2 class="text-xl font-semibold border-b pb-2 mt-6">Depot Supply (Total Inventory)</h2>
+                <div class="grid grid-cols-3 gap-2">
+                    <label class="text-xs">D1: <input type="number" id="s1" value="2500" class="w-full p-2 border rounded"></label>
+                    <label class="text-xs">D2: <input type="number" id="s2" value="3100" class="w-full p-2 border rounded"></label>
+                    <label class="text-xs">D3: <input type="number" id="s3" value="1250" class="w-full p-2 border rounded"></label>
+                </div>
+
+                <h2 class="text-xl font-semibold border-b pb-2 mt-6">Store Capacities</h2>
+                <div class="grid grid-cols-3 gap-2">
+                    <label class="text-xs">Store 1: <input type="number" id="c1" value="2000" class="w-full p-2 border rounded"></label>
+                    <label class="text-xs">Store 2: <input type="number" id="c2" value="3000" class="w-full p-2 border rounded"></label>
+                    <label class="text-xs">Store 3: <input type="number" id="c3" value="2000" class="w-full p-2 border rounded"></label>
+                </div>
+                
+                <button onclick="solve()" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">Calculate Optimization</button>
+            </div>
+
+            <div class="bg-blue-50 p-6 rounded-lg border border-blue-200">
+                <h2 class="text-xl font-semibold text-blue-800 mb-4">Optimization Results</h2>
+                <div id="resultText" class="text-2xl font-bold text-gray-800 mb-4">£0.00</div>
+                <div id="matrixTable" class="text-sm"></div>
+                <div id="slackTable" class="mt-4 pt-4 border-t border-blue-200"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dist = [
+            [22, 33, 40],
+            [27, 30, 22],
+            [36, 20, 25]
+        ];
+
+        function solve() {
+            const P = parseFloat(document.getElementById('unitCost').value);
+            const supply = [
+                parseInt(document.getElementById('s1').value),
+                parseInt(document.getElementById('s2').value),
+                parseInt(document.getElementById('s3').value)
+            ];
+            const caps = [
+                parseInt(document.getElementById('c1').value),
+                parseInt(document.getElementById('c2').value),
+                parseInt(document.getElementById('c3').value)
+            ];
+
+            // Setup LP Solver model
+            const model = {
+                optimize: "cost",
+                opType: "min",
+                constraints: {
+                    depot1: { equal: supply[0] },
+                    depot2: { equal: supply[1] },
+                    depot3: { equal: supply[2] },
+                    store1: { max: caps[0] },
+                    store2: { max: caps[1] },
+                    store3: { max: caps[2] }
+                },
+                variables: {}
+            };
+
+            // Build variables for each route
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    const varName = `d${i+1}s${j+1}`;
+                    model.variables[varName] = {
+                        cost: dist[i][j] * P,
+                        [`depot${i+1}`]: 1,
+                        [`store${j+1}`]: 1
+                    };
+                }
+            }
+
+            const results = solver.Solve(model);
+            
+            // Display Results
+            document.getElementById('resultText').innerText = results.feasible ? 
+                `Total Cost: £${results.result.toLocaleString(undefined, {minimumFractionDigits: 2})}` : "Infeasible Solution";
+
+            // Generate Matrix UI
+            let html = "<table class='w-full text-left'><tr><th></th><th>S1</th><th>S2</th><th>S3</th></tr>";
+            let sActual = [0,0,0];
+            for (let i = 0; i < 3; i++) {
+                html += `<tr><td class='font-bold'>D${i+1}</td>`;
+                for (let j = 0; j < 3; j++) {
+                    const val = results[`d${i+1}s${j+1}`] || 0;
+                    html += `<td>${val}</td>`;
+                    sActual[j] += val;
+                }
+                html += "</tr>";
+            }
+            html += "</table>";
+            document.getElementById('matrixTable').innerHTML = html;
+
+            // Generate Slack UI
+            let slackHtml = "<h3 class='font-bold text-blue-800'>Store Slack (Remaining)</h3>";
+            caps.forEach((cap, idx) => {
+                const slack = cap - sActual[idx];
+                slackHtml += `<div class='flex justify-between'><span>Store ${idx+1}:</span> <span>${slack} units</span></div>`;
+            });
+            document.getElementById('slackTable').innerHTML = slackHtml;
+        }
+    </script>
+</body>
+</html>
